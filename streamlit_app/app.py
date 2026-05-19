@@ -6,6 +6,7 @@ from __future__ import annotations
 
 
 
+import hashlib
 import html
 import io
 
@@ -102,6 +103,32 @@ def _section_color_map(sections: list[str] | pd.Series) -> dict[str, str]:
     return dict(zip(ordered, colors))
 
 
+def _apply_section_legend(fig, n_sections: int) -> None:
+    """Legend layout that keeps full section codes visible (e.g. T01, not truncated to T0)."""
+    base = dict(itemclick=False, itemdoubleclick=False, font=dict(size=11))
+    if n_sections <= 8:
+        fig.update_layout(
+            legend={**base, "itemwidth": 42, "tracegroupgap": 0},
+            margin=dict(r=100),
+        )
+        return
+    legend_rows = max(1, (n_sections + 9) // 10)
+    fig.update_layout(
+        legend={
+            **base,
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.12 - (legend_rows - 1) * 0.06,
+            "xanchor": "center",
+            "x": 0.5,
+            "itemwidth": 44,
+            "tracegroupgap": 2,
+        },
+        margin=dict(b=50 + legend_rows * 28, t=60),
+        height=480 + legend_rows * 28,
+    )
+
+
 
 
 
@@ -118,16 +145,13 @@ st.set_page_config(
 
 
 @st.cache_data(show_spinner=False)
-
 def cached_load(
-
+    file_hash: str,
     file_bytes: bytes,
-
 ) -> tuple[pd.DataFrame, list[dict[str, Any]], list[dict[str, Any]], list[str], dict[str, Any]]:
-
     """Parse uploaded CSV bytes with PII scrubbing (cached per file content)."""
-
-    return load_and_parse(io.BytesIO(file_bytes))
+    _ = file_hash
+    return load_and_parse(file_bytes)
 
 
 
@@ -1512,12 +1536,13 @@ def _section_comparison(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) 
 
     )
 
-    fig.update_layout(
-        legend=dict(itemclick=False, itemdoubleclick=False),
-    )
+    _apply_section_legend(fig, len(sections_ordered))
     _apply_hover_layout(fig)
 
-    st.caption("Filter sections in the sidebar. Legend entries are labels only (not clickable).")
+    st.caption(
+        "Sections are labeled T01ùT28 (tutorial groups), not T0. "
+        "Filter sections in the sidebar. Legend entries are labels only (not clickable)."
+    )
     _plotly_chart(fig, use_container_width=True)
 
 
@@ -1674,20 +1699,21 @@ Use the **sidebar** to upload a Canvas quiz results CSV.
 
         with st.spinner("Loading and scrubbing data..."):
 
-            file_bytes = uploaded.getvalue()
+            file_bytes = bytes(uploaded.getvalue())
+            file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-            df, questions_meta, open_ended_meta, sections, _pii_report = cached_load(file_bytes)
+            df, questions_meta, open_ended_meta, sections, _pii_report = cached_load(
+                file_hash, file_bytes
+            )
 
             df = shuffle_anonymous(df)
 
     except Exception as exc:
 
         st.error(
-
-            f"Could not load this file. Check that it is a Canvas quiz CSV exported with "
-
-            f"latin1-compatible encoding. Details: {exc}"
-
+            "Could not load this file. Upload the original Canvas quiz CSV export "
+            "(do not open and re-save in Excel first). "
+            f"Details: {exc}"
         )
 
         return

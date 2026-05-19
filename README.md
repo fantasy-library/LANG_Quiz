@@ -18,7 +18,7 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Open http://localhost:8501 and upload a Canvas quiz CSV (latin1 encoding).
+Open http://localhost:8501 and upload a Canvas quiz CSV (Windows/cp1252 or UTF-8).
 
 ## Privacy
 

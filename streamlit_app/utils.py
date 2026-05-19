@@ -526,14 +526,46 @@ def analyze_open_text(
     }
 
 
-def load_and_parse(file: BinaryIO | io.BytesIO) -> tuple[pd.DataFrame, list[dict[str, Any]], list[dict[str, Any]], list[str], dict[str, Any]]:
+# Canvas quiz exports from Excel/Windows often use cp1252 (smart quotes, en dashes).
+# Never rely on pandas' default utf-8 or on decoding uploads as text first.
+_CSV_ENCODINGS: tuple[str, ...] = ("cp1252", "latin-1", "utf-8-sig", "utf-8")
+
+
+def _coerce_csv_bytes(source: bytes | bytearray | BinaryIO | io.BytesIO) -> bytes:
+    """Read the full upload as raw bytes (no UTF-8 text decode)."""
+    if isinstance(source, (bytes, bytearray)):
+        return bytes(source)
+    if hasattr(source, "getvalue") and callable(source.getvalue):
+        return bytes(source.getvalue())
+    if hasattr(source, "read") and callable(source.read):
+        return bytes(source.read())
+    raise TypeError(f"Expected bytes or a binary stream, got {type(source).__name__}")
+
+
+def _read_canvas_csv_bytes(data: bytes) -> pd.DataFrame:
+    """Parse Canvas CSV bytes using a Windows-safe encoding fallback chain."""
+    if not data:
+        raise ValueError("CSV file is empty.")
+    last_err: UnicodeDecodeError | None = None
+    for encoding in _CSV_ENCODINGS:
+        try:
+            return pd.read_csv(io.BytesIO(data), encoding=encoding, engine="c")
+        except UnicodeDecodeError as exc:
+            last_err = exc
+    # latin-1 accepts every byte; should not reach here
+    if last_err is not None:
+        raise last_err
+    return pd.read_csv(io.BytesIO(data), encoding="latin-1", engine="c")
+
+
+def load_and_parse(file: bytes | bytearray | BinaryIO | io.BytesIO) -> tuple[pd.DataFrame, list[dict[str, Any]], list[dict[str, Any]], list[str], dict[str, Any]]:
     """
     Read a Canvas quiz CSV, scrub PII, and build question metadata.
 
     Parameters
     ----------
-    file : file-like
-        Uploaded CSV bytes stream.
+    file : bytes or file-like
+        Raw uploaded CSV bytes (not a decoded string).
 
     Returns
     -------
@@ -541,7 +573,7 @@ def load_and_parse(file: BinaryIO | io.BytesIO) -> tuple[pd.DataFrame, list[dict
         Scrubbed ``df``, scored ``questions_meta``, ``open_ended_meta``,
         sorted ``sections``, and ``pii_report`` from :func:`privacy.scrub_pii`.
     """
-    raw = pd.read_csv(file, encoding="latin1")
+    raw = _read_canvas_csv_bytes(_coerce_csv_bytes(file))
 
     # Extract section label while section_sis_id is still present
     raw = _extract_section_from_sis(raw)
