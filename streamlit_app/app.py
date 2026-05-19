@@ -58,6 +58,30 @@ COLOR_PASS = "#4CAF50"
 COLOR_FAIL = "#FF6B6B"
 
 
+def _plotly_chart(fig, *, use_container_width: bool = True) -> None:
+    """
+    Render Plotly without Streamlit's PlotlyChart JS chunk (fails on some PaaS hosts).
+
+    Uses Plotly CDN in an HTML component so charts load on Railway and similar platforms.
+    """
+    import plotly.io as pio
+
+    layout_h = fig.layout.height
+    height = int(layout_h) + 40 if layout_h else 450
+    html = pio.to_html(
+        fig,
+        full_html=False,
+        include_plotlyjs="cdn",
+        config={"displayModeBar": True, "responsive": True},
+    )
+    width_style = "width:100%;" if use_container_width else ""
+    st.components.v1.html(
+        f'<div style="{width_style}">{html}</div>',
+        height=height,
+        scrolling=False,
+    )
+
+
 def _section_color_map(sections: list[str] | pd.Series) -> dict[str, str]:
     """Muted blue shades per section (readable with many sections, not rainbow)."""
     ordered = sorted({str(s) for s in sections})
@@ -337,7 +361,7 @@ def _score_histogram(df: pd.DataFrame) -> None:
 
     _apply_hover_layout(fig)
 
-    st.plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True)
 
 
 
@@ -368,7 +392,7 @@ def _score_by_section_box(df: pd.DataFrame) -> None:
     fig.update_traces(marker_color="#1976D2", line_color="#1565C0")
     _finish_simple_hover(fig, "Section: %{x}<br>Score: %{y}<extra></extra>")
 
-    st.plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True)
 
 
 
@@ -413,7 +437,7 @@ def _submission_timeline(df: pd.DataFrame) -> None:
     )
     _finish_simple_hover(fig, "Date: %{x}<br>Submissions: %{y}<extra></extra>")
 
-    st.plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True)
 
 
 
@@ -463,7 +487,7 @@ def _question_full_marks_chart(df: pd.DataFrame, questions_meta: list[dict[str, 
     fig.update_layout(yaxis={"categoryorder": "total ascending"})
     _finish_question_bar_hover(fig, "Full marks (%)")
 
-    st.plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True)
 
 
 
@@ -525,7 +549,7 @@ def _question_avg_score_chart(df: pd.DataFrame, questions_meta: list[dict[str, A
     fig.update_layout(yaxis={"categoryorder": "total ascending"})
     _finish_question_bar_hover(fig, "Avg (% of max)")
 
-    st.plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True)
 
 
 
@@ -591,7 +615,7 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
         )
     )
     _apply_hover_layout(fig)
-    st.plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True)
 
     legend = counts[["Choice", "Count", "is_correct", "Answer"]].copy()
     legend["Correct"] = legend["is_correct"].map({True: "Yes", False: "No"})
@@ -1028,7 +1052,7 @@ def _render_open_ended_section(
             fig.update_layout(yaxis={"categoryorder": "total ascending"})
             _finish_simple_hover(fig, "Word: %{y}<br>Count: %{x}<extra></extra>")
 
-            st.plotly_chart(fig, use_container_width=True)
+            _plotly_chart(fig, use_container_width=True)
 
         else:
 
@@ -1057,7 +1081,7 @@ def _render_open_ended_section(
             )
             _finish_simple_hover(fig, "Words: %{x}<br>Students: %{y}<extra></extra>")
 
-            st.plotly_chart(fig, use_container_width=True)
+            _plotly_chart(fig, use_container_width=True)
 
         else:
 
@@ -1137,7 +1161,7 @@ def _render_open_ended_section(
         )
         _finish_wrapped_label_hover(fig, "Topic", "Responses", "%{x}")
 
-        st.plotly_chart(fig, use_container_width=True)
+        _plotly_chart(fig, use_container_width=True)
 
         with st.expander("Full topic list (all titles)"):
 
@@ -1445,7 +1469,7 @@ def _section_comparison(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) 
     _apply_hover_layout(fig)
 
     st.caption("Filter sections in the sidebar. Legend entries are labels only (not clickable).")
-    st.plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True)
 
 
 
