@@ -25,6 +25,21 @@ Open http://localhost:8501 and upload a Canvas quiz CSV (latin1 encoding).
 - Identifiers are removed on upload; rows are shuffled and labelled `Student 1`, `Student 2`, …
 - Do not commit real quiz CSV files to this repository
 
+## Deploy (Railway / similar)
+
+The repo includes:
+
+- `streamlit_app/.streamlit/config.toml` — headless server defaults for PaaS
+- `railway.json` — Railpack build and start command (`PORT` from the platform)
+
+In Railway, connect this GitHub repo and deploy. The start command runs from `streamlit_app/` and binds to `$PORT`.
+
+Alternatively set the service **Root Directory** to `streamlit_app` and use:
+
+```bash
+streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.fileWatcherType=none --browser.gatherUsageStats=false
+```
+
 ## Repository
 
 https://github.com/fantasy-library/LANG_Quiz

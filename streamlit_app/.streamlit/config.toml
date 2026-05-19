@@ -1,0 +1,12 @@
+# Production-friendly defaults for PaaS (Railway, etc.).
+# Do not set `port` here — the platform sets PORT; pass it via the start command.
+
+[server]
+headless = true
+address = "0.0.0.0"
+enableCORS = false
+enableXsrfProtection = false
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
