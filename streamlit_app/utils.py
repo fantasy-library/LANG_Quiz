@@ -529,6 +529,54 @@ def analyze_open_text(
 # Canvas quiz exports from Excel/Windows often use cp1252 (smart quotes, en dashes).
 # Never rely on pandas' default utf-8 or on decoding uploads as text first.
 _CSV_ENCODINGS: tuple[str, ...] = ("cp1252", "latin-1", "utf-8-sig", "utf-8")
+_CHARDET_SAMPLE_BYTES = 500_000
+_CHARDET_MIN_CONFIDENCE = 0.7
+
+# chardet labels -> names accepted by pandas read_csv
+_ENCODING_ALIASES: dict[str, str] = {
+    "ascii": "utf-8",
+    "utf8": "utf-8",
+    "utf8sig": "utf-8-sig",
+    "windows1252": "cp1252",
+    "cp1252": "cp1252",
+    "iso88591": "latin-1",
+    "latin1": "latin-1",
+    "iso88592": "latin-2",
+}
+
+
+def _normalize_detected_encoding(name: str | None) -> str | None:
+    if not name:
+        return None
+    key = name.strip().lower().replace("-", "").replace("_", "")
+    return _ENCODING_ALIASES.get(key, name.strip().lower())
+
+
+def _detect_csv_encoding(data: bytes) -> str | None:
+    """Guess CSV encoding from raw bytes (chardet); None if unsure."""
+    try:
+        import chardet
+    except ImportError:
+        return None
+    sample = data if len(data) <= _CHARDET_SAMPLE_BYTES else data[:_CHARDET_SAMPLE_BYTES]
+    result = chardet.detect(sample)
+    encoding = _normalize_detected_encoding(result.get("encoding"))
+    confidence = float(result.get("confidence") or 0.0)
+    if encoding and confidence >= _CHARDET_MIN_CONFIDENCE:
+        return encoding
+    return None
+
+
+def _encoding_attempt_order(data: bytes) -> list[str]:
+    """Detected encoding first, then safe fallbacks (no duplicates)."""
+    ordered: list[str] = []
+    detected = _detect_csv_encoding(data)
+    if detected:
+        ordered.append(detected)
+    for enc in _CSV_ENCODINGS:
+        if enc not in ordered:
+            ordered.append(enc)
+    return ordered
 
 
 def _coerce_csv_bytes(source: bytes | bytearray | BinaryIO | io.BytesIO) -> bytes:
@@ -543,16 +591,15 @@ def _coerce_csv_bytes(source: bytes | bytearray | BinaryIO | io.BytesIO) -> byte
 
 
 def _read_canvas_csv_bytes(data: bytes) -> pd.DataFrame:
-    """Parse Canvas CSV bytes using a Windows-safe encoding fallback chain."""
+    """Parse Canvas CSV bytes: chardet auto-detect, then encoding fallbacks."""
     if not data:
         raise ValueError("CSV file is empty.")
     last_err: UnicodeDecodeError | None = None
-    for encoding in _CSV_ENCODINGS:
+    for encoding in _encoding_attempt_order(data):
         try:
             return pd.read_csv(io.BytesIO(data), encoding=encoding, engine="c")
         except UnicodeDecodeError as exc:
             last_err = exc
-    # latin-1 accepts every byte; should not reach here
     if last_err is not None:
         raise last_err
     return pd.read_csv(io.BytesIO(data), encoding="latin-1", engine="c")
