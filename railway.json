@@ -1,11 +1,9 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "RAILPACK",
-    "buildCommand": "pip install -r streamlit_app/requirements.txt"
+    "builder": "RAILPACK"
   },
   "deploy": {
-    "startCommand": "cd streamlit_app && streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.fileWatcherType=none --browser.gatherUsageStats=false",
     "healthcheckPath": "/",
     "healthcheckTimeout": 300
   }
