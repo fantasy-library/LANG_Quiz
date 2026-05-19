@@ -31,9 +31,15 @@ from utils import (
 
     collect_open_responses,
 
+    correct_mcq_letters,
+
+    count_mcq_letter_selections,
+
     detect_correct_answers,
 
     export_scrubbed_csv,
+
+    looks_like_mcq_multiselect,
 
     group_responses_by_theme,
 
@@ -579,15 +585,36 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
 
     work[q["score_col"]] = pd.to_numeric(work[q["score_col"]], errors="coerce")
 
-    counts = work[q["question_col"]].value_counts().reset_index()
-    counts.columns = ["Answer", "Count"]
+    answer_col = work[q["question_col"]]
     correct = detect_correct_answers(df, q["question_col"], q["score_col"], q["max_score"])
-    counts["is_correct"] = counts["Answer"].isin(correct)
-    counts = counts.sort_values("Count", ascending=True).reset_index(drop=True)
-    counts["Choice"] = [f"Option {i + 1}" for i in range(len(counts))]
-    counts["Answer hover"] = counts["Answer"].map(
-        lambda t: _wrap_for_hover(str(t).replace("\n", " "), width=48)
-    )
+
+    if looks_like_mcq_multiselect(answer_col):
+        st.caption(
+            "This is a **multi-select** question (students may choose more than one option). "
+            "The chart counts how many students selected each letter (A, B, C, ...), not every "
+            "unique combination of choices."
+        )
+        counts = count_mcq_letter_selections(answer_col)
+        correct_letters = correct_mcq_letters(correct)
+        counts["is_correct"] = counts["Letter"].isin(correct_letters)
+        counts["Choice"] = counts["Letter"]
+        counts["Answer hover"] = counts["Full answer text"].map(
+            lambda t: _wrap_for_hover(str(t).replace("\n", " "), width=48)
+        )
+        chart_title = "Selections per option (multi-select MCQ)"
+        legend_cols = ["Letter", "Count", "Correct", "Full answer text"]
+    else:
+        counts = answer_col.value_counts().reset_index()
+        counts.columns = ["Answer", "Count"]
+        counts["is_correct"] = counts["Answer"].isin(correct)
+        counts = counts.sort_values("Count", ascending=True).reset_index(drop=True)
+        counts["Choice"] = [f"Option {i + 1}" for i in range(len(counts))]
+        counts["Answer hover"] = counts["Answer"].map(
+            lambda t: _wrap_for_hover(str(t).replace("\n", " "), width=48)
+        )
+        chart_title = "Answer distribution (hover for full answer text)"
+        legend_cols = ["Choice", "Count", "Correct", "Full answer text"]
+        counts = counts.rename(columns={"Answer": "Full answer text"})
 
     fig = px.bar(
         counts,
@@ -597,7 +624,7 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
         color="is_correct",
         color_discrete_map={True: COLOR_PASS, False: "#1976D2"},
         labels={"is_correct": "Correct answer", "Choice": "Answer choice"},
-        title="Answer distribution (hover for full answer text)",
+        title=chart_title,
         custom_data=["Answer hover"],
     )
     chart_height = max(320, len(counts) * 36)
@@ -617,14 +644,23 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
     _apply_hover_layout(fig)
     _plotly_chart(fig, use_container_width=True)
 
-    legend = counts[["Choice", "Count", "is_correct", "Answer"]].copy()
+    legend = counts.copy()
     legend["Correct"] = legend["is_correct"].map({True: "Yes", False: "No"})
-    legend = legend.rename(columns={"Answer": "Full answer text"})
     st.dataframe(
-        legend[["Choice", "Count", "Correct", "Full answer text"]],
+        legend[legend_cols],
         use_container_width=True,
         hide_index=True,
     )
+
+    if looks_like_mcq_multiselect(answer_col):
+        combo = answer_col.value_counts().reset_index()
+        combo.columns = ["Response combination", "Count"]
+        with st.expander("All response combinations (advanced)"):
+            st.caption(
+                "Each row is exactly what one or more students submitted "
+                "(e.g. B only, or B + C + D together)."
+            )
+            st.dataframe(combo, use_container_width=True, hide_index=True)
 
 
 

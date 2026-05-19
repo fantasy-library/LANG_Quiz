@@ -14,6 +14,8 @@ import pandas as pd
 from privacy import scrub_pii
 
 _SCORE_COL_RE = re.compile(r"^Column(\d+)$", re.IGNORECASE)
+_MCQ_OPTION_SPLIT_RE = re.compile(r",\s*(?=[A-Z]\.)")
+_MCQ_LETTER_RE = re.compile(r"^([A-Z])\.")
 _PASS_THRESHOLD = 60.0
 _WORD_RE = re.compile(r"[a-z][a-z0-9']{1,}")
 _CANVAS_ARTIFACT_RE = re.compile(
@@ -600,6 +602,75 @@ def truncate_label(text: str, max_len: int = 60) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 3] + "..."
+
+
+def split_mcq_response(text: str) -> list[str]:
+    """Split a Canvas MCQ / multi-select cell into one string per lettered option."""
+    cleaned = str(text).strip()
+    if not cleaned or cleaned.lower() in ("nan", "no answer"):
+        return []
+    parts = _MCQ_OPTION_SPLIT_RE.split(cleaned)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def mcq_letters_from_response(text: str) -> set[str]:
+    """Return option letters (A, B, C, ...) present in a response."""
+    letters: set[str] = set()
+    for part in split_mcq_response(text):
+        match = _MCQ_LETTER_RE.match(part)
+        if match:
+            letters.add(match.group(1).upper())
+    return letters
+
+
+def looks_like_mcq_multiselect(answers: pd.Series) -> bool:
+    """True when answers look like lettered Canvas MCQ options (possibly multi-select)."""
+    sample = answers.dropna().astype(str).head(80)
+    if sample.empty:
+        return False
+    matched = sum(
+        1
+        for text in sample
+        if _MCQ_LETTER_RE.match(str(text).strip()) or _MCQ_OPTION_SPLIT_RE.search(str(text))
+    )
+    return matched >= max(3, int(len(sample) * 0.5))
+
+
+def count_mcq_letter_selections(answers: pd.Series) -> pd.DataFrame:
+    """
+    Count how many students selected each letter at least once.
+
+    Used when students may pick multiple options (Canvas joins them with commas).
+    """
+    letter_counts: collections.Counter[str] = collections.Counter()
+    letter_text: dict[str, str] = {}
+    for raw in answers:
+        for letter in mcq_letters_from_response(raw):
+            letter_counts[letter] += 1
+        for part in split_mcq_response(raw):
+            match = _MCQ_LETTER_RE.match(part)
+            if not match:
+                continue
+            letter = match.group(1).upper()
+            if letter not in letter_text or len(part) > len(letter_text[letter]):
+                letter_text[letter] = part.strip()
+    rows = [
+        {
+            "Letter": letter,
+            "Count": letter_counts[letter],
+            "Full answer text": letter_text.get(letter, letter),
+        }
+        for letter in sorted(letter_counts)
+    ]
+    return pd.DataFrame(rows)
+
+
+def correct_mcq_letters(correct_answers: set[str]) -> set[str]:
+    """Map full-text correct answer(s) to option letters."""
+    letters: set[str] = set()
+    for answer in correct_answers:
+        letters.update(mcq_letters_from_response(answer))
+    return letters
 
 
 def detect_correct_answers(
