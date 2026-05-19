@@ -29,13 +29,22 @@ Open http://localhost:8501 and upload a Canvas quiz CSV (latin1 encoding).
 
 The repo includes:
 
+- `requirements.txt` + `railpack.json` at the **repo root** (default Railway setup)
 - `streamlit_app/.streamlit/config.toml` — headless server defaults for PaaS
-- `streamlit_app/railpack.json` — Railpack `deploy.startCommand` (uses `$PORT`)
-- `railway.json` — Railway builder (`RAILPACK`) and health check settings
+- `streamlit_app/railpack.json` — alternate config if Root Directory is `streamlit_app`
+- `railway.json` — Railway builder (`RAILPACK`) and health check only
 
-**Important:** In Railway, set the service **Root Directory** to `streamlit_app` so Railpack finds `railpack.json`, `requirements.txt`, and `app.py` in the same folder.
+### Railway settings
 
-The start command in `railpack.json` is:
+1. **Builder:** Railpack (from `railway.json`)
+2. **Root Directory:** leave empty (repo root) — recommended
+3. Do **not** set a custom build command like `pip install ...` in the Railway UI; Railpack installs Python and dependencies automatically.
+
+If build fails with `pip: not found`, clear any manual **Build Command** in Railway service settings and redeploy.
+
+### Alternative: Root Directory = `streamlit_app`
+
+Use `streamlit_app/railpack.json` and this start command:
 
 ```bash
 streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.fileWatcherType=none --browser.gatherUsageStats=false
