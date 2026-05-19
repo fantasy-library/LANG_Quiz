@@ -652,7 +652,8 @@ def count_mcq_letter_selections(answers: pd.Series) -> pd.DataFrame:
             if not match:
                 continue
             letter = match.group(1).upper()
-            if letter not in letter_text or len(part) > len(letter_text[letter]):
+            prev_text = letter_text.get(letter, "")
+            if len(part) > len(prev_text):
                 letter_text[letter] = part.strip()
     rows = [
         {

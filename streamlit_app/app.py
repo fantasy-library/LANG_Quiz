@@ -6,6 +6,7 @@ from __future__ import annotations
 
 
 
+import html
 import io
 
 import re
@@ -949,39 +950,51 @@ def _render_open_student_content(
 
 
 
+def _inject_response_text_styles() -> None:
+    """Once-per-session CSS so full-response text is high-contrast (not disabled gray)."""
+    if st.session_state.get("_response_text_css"):
+        return
+    st.markdown(
+        """
+        <style>
+        .quiz-response-text {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            color: #1a1a1a;
+            font-size: 1rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 480px;
+            overflow-y: auto;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.session_state["_response_text_css"] = True
+
+
+def _render_readable_response(text: str) -> None:
+    """Display student response text with readable contrast."""
+    _inject_response_text_styles()
+    safe = html.escape(str(text).strip())
+    st.markdown(f'<div class="quiz-response-text">{safe}</div>', unsafe_allow_html=True)
+
+
 def _show_full_response(text: str, student_id: str, area_key: str) -> None:
     """Prominent scrollable panel for a student's complete open-ended answer."""
-    body = str(text)
+    del area_key  # layout key not needed for markdown block
     with st.expander(f"Full response - {student_id}", expanded=True):
-        st.text_area(
-            "Full response",
-            value=body,
-            height=min(480, max(160, body.count("\n") * 24 + 100)),
-            disabled=True,
-            label_visibility="collapsed",
-            key=area_key,
-        )
+        _render_readable_response(text)
 
 
 def _render_response_text_area(text: str, key: str) -> None:
-
     """Show a scrollable full response."""
-
-    st.text_area(
-
-        "Full response",
-
-        value=text,
-
-        height=min(500, max(120, text.count("\n") * 22 + 100)),
-
-        disabled=True,
-
-        label_visibility="collapsed",
-
-        key=key,
-
-    )
+    del key
+    _render_readable_response(text)
 
 
 
