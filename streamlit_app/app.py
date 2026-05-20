@@ -1014,9 +1014,19 @@ def _render_readable_response(text: str) -> None:
     st.markdown(f'<div class="quiz-response-text">{safe}</div>', unsafe_allow_html=True)
 
 
-def _show_full_response(text: str, student_id: str, area_key: str) -> None:
+def _show_full_response(
+    text: str,
+    student_id: str,
+    area_key: str,
+    *,
+    nested: bool = False,
+) -> None:
     """Prominent scrollable panel for a student's complete open-ended answer."""
     del area_key  # layout key not needed for markdown block
+    if nested:
+        st.markdown(f"**Full response ù {student_id}**")
+        _render_readable_response(text)
+        return
     with st.expander(f"Full response - {student_id}", expanded=True):
         _render_readable_response(text)
 
@@ -1393,6 +1403,7 @@ def _render_open_ended_section(
                         response_by_student[selected_id],
                         selected_id,
                         area_key=f"open_theme_full_{choice}_{theme_slug}_{safe_id}",
+                        nested=True,
                     )
                     if st.button(
                         "Link to Student Detail tab",
