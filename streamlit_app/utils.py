@@ -160,13 +160,19 @@ _CURATED_THEMES: tuple[dict[str, Any], ...] = (
     {"label": "Google / Google Scholar", "needles": ("google scholar", "google")},
     {"label": "Videos", "needles": ("video", "videos")},
     {"label": "Interactive exercises", "needles": ("interactive exercise", "interactive exercises", "interactive")},
+    {
+        "label": "Copyright / licensing",
+        "needles": ("copyright", "license", "licenses", "licensing", "creative commons"),
+    },
 )
 
 # Generic words that are not useful as auto-discovered topic labels.
 _GENERIC_DISCOVERY_BLOCKLIST = frozenset(
     """
     useful learnt learned learning learn help helps helped helpful
+    taught teach teaches teaching teacher teachers
     thing things module modules online assignment assignments
+    form
     student students university hkust ust quiz answer answers question questions
     read reading write writing future academic work working
     good great nice well better best bad worse
@@ -186,6 +192,7 @@ _GENERIC_DISCOVERY_BLOCKLIST = frozenset(
     short reply replies following result results differently
     lang lang1406 guide guides exercise exercises
     quite instead properly believe pretty effectively rather provided
+    provide provides
     always often sometimes usually already always
     instead rather
   something anything everything someone anyone
@@ -194,8 +201,23 @@ _GENERIC_DISCOVERY_BLOCKLIST = frozenset(
     """.split()
 )
 
+# Frequent reflection / feedback words that are not library topics (never auto-theme).
+_DISCOVERY_FILLER_TOKENS = frozenset(
+    """
+    various variety avoid avoids avoided careful carefully correct correctly
+    tools tool articles article websites website professional professionals
+    access accessed ensure ensures evaluate evaluates evaluated evaluation
+    relevant relevance important importance studies study start starts started
+    appropriate appropriately examples example links link informative include
+    includes included content contents follow follows suggest suggests shorter
+    perfect concise comprehensive enough section sections games game
+    instructions instruction their business school schools essays essay
+    carefulness careful avoidable
+    """.split()
+)
+
 # Used by word-frequency charts and theme discovery (English + open-ended filler).
-_ANALYSIS_STOPWORDS = _STOPWORDS | _GENERIC_DISCOVERY_BLOCKLIST
+_ANALYSIS_STOPWORDS = _STOPWORDS | _GENERIC_DISCOVERY_BLOCKLIST | _DISCOVERY_FILLER_TOKENS
 
 # Tokens to never promote as auto-discovered themes (too generic or already curated).
 _DISCOVERY_BLOCKLIST = _ANALYSIS_STOPWORDS
@@ -553,6 +575,8 @@ def _is_valid_discovered_token(
 ) -> bool:
     if len(token) < _DISCOVERY_MIN_TOKEN_LEN:
         return False
+    if token in _DISCOVERY_FILLER_TOKENS:
+        return False
     if len(token) >= 6 and token.endswith("ly"):
         return False
     if token in blocklist or token in curated:
@@ -611,11 +635,15 @@ def discover_prominent_terms(
 def build_theme_catalog(
     responses_df: pd.DataFrame,
     prompt_text: str | None = None,
+    *,
+    include_discovered: bool = False,
 ) -> list[dict[str, Any]]:
-    """Curated themes plus auto-discovered terms for this response set."""
+    """Curated themes; optionally add frequent words not already covered."""
     catalog: list[dict[str, Any]] = []
     for theme in _CURATED_THEMES:
         catalog.append({**theme, "kind": "curated"})
+    if not include_discovered:
+        return catalog
     seen_labels = {t["label"] for t in catalog}
     for item in discover_prominent_terms(responses_df, prompt_text=prompt_text):
         if item["label"] not in seen_labels:

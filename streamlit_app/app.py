@@ -1345,8 +1345,8 @@ def _render_open_ended_section(
         st.subheader("Responses by theme")
 
         st.caption(
-            "Themes are topics students mention (e.g. APA, ProQuest), not the quiz question "
-            "titles. Phrasing copied from the prompt (e.g. \"Library Module\") is excluded. "
+            "Curated library topics only (e.g. APA, ProQuest, Copyright). Generic words from "
+            "reflection phrasing (e.g. taught, careful, various) are not listed as themes. "
             "Listed from most to fewest responses. "
             "Click once on a table row to open the full response below (double-click is not needed)."
         )
