@@ -159,47 +159,56 @@ def cached_load(
 
 
 
-def _sync_section_checkboxes(sections: list[str], selected: list[str]) -> None:
-    """Keep per-section checkbox widget state aligned with ``selected``."""
-    want = set(selected)
+def _section_checkbox_key(section: str) -> str:
+    return f"filter_sec_{section}"
+
+
+def _init_section_filter_state(sections: list[str], *, select_all: bool) -> None:
+    """Initialize section checkbox keys (call on new file or Reset / Select all)."""
+    st.session_state["sel_sections"] = list(sections) if select_all else []
+    want = set(st.session_state["sel_sections"])
     for sec in sections:
-        st.session_state[f"filter_sec_{sec}"] = sec in want
+        st.session_state[_section_checkbox_key(sec)] = sec in want
+
+
+def _sections_from_checkbox_state(sections: list[str]) -> list[str]:
+    """Read current checkbox ticks without overwriting widget state."""
+    return [
+        sec
+        for sec in sections
+        if st.session_state.get(_section_checkbox_key(sec), False)
+    ]
 
 
 def _section_filter_sidebar(sections: list[str]) -> list[str]:
     """
     Section filter using checkboxes so zero sections can be selected reliably.
 
-    Checkbox state is driven via ``st.session_state`` so Select/Unselect all
-    updates ticks immediately (``value=`` alone does not).
+    Checkbox clicks update ``st.session_state`` directly; do not resync from
+  ``sel_sections`` before rendering or ticks revert on the next rerun.
     """
-    if "sel_sections" not in st.session_state:
-        st.session_state["sel_sections"] = list(sections)
-
-    _sync_section_checkboxes(sections, st.session_state["sel_sections"])
+    for sec in sections:
+        key = _section_checkbox_key(sec)
+        if key not in st.session_state:
+            st.session_state[key] = True
 
     st.markdown("**Section**")
-    selected: list[str] = []
     with st.expander("Choose sections", expanded=True):
-        n_total = len(sections)
-        n_sel = len(st.session_state["sel_sections"])
-        st.caption(f"{n_sel} of {n_total} sections selected")
-
         b1, b2 = st.columns(2)
         with b1:
             if st.button("Select all", key="filter_sec_all", use_container_width=True):
-                st.session_state["sel_sections"] = list(sections)
-                _sync_section_checkboxes(sections, st.session_state["sel_sections"])
+                _init_section_filter_state(sections, select_all=True)
                 st.rerun()
         with b2:
             if st.button("Unselect all", key="filter_sec_none", use_container_width=True):
-                st.session_state["sel_sections"] = []
-                _sync_section_checkboxes(sections, [])
+                _init_section_filter_state(sections, select_all=False)
                 st.rerun()
 
         for sec in sections:
-            if st.checkbox(sec, key=f"filter_sec_{sec}"):
-                selected.append(sec)
+            st.checkbox(sec, key=_section_checkbox_key(sec))
+
+        selected = _sections_from_checkbox_state(sections)
+        st.caption(f"{len(selected)} of {len(sections)} sections selected")
 
     st.session_state["sel_sections"] = selected
     if not selected:
@@ -1744,6 +1753,10 @@ Use the **sidebar** to upload a Canvas quiz results CSV.
 
             df = shuffle_anonymous(df)
 
+            if st.session_state.get("_quiz_file_hash") != file_hash:
+                st.session_state["_quiz_file_hash"] = file_hash
+                _init_section_filter_state(sections, select_all=True)
+
     except Exception as exc:
 
         st.error(
@@ -1766,9 +1779,7 @@ Use the **sidebar** to upload a Canvas quiz results CSV.
 
         if st.button("Reset filters"):
 
-            st.session_state["sel_sections"] = list(sections)
-
-            _sync_section_checkboxes(sections, st.session_state["sel_sections"])
+            _init_section_filter_state(sections, select_all=True)
 
             for key in ("score_range", "date_range", "pass_filter"):
 
