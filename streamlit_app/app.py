@@ -68,7 +68,12 @@ COLOR_PASS = "#4CAF50"
 COLOR_FAIL = "#FF6B6B"
 
 
-def _plotly_chart(fig, *, use_container_width: bool = True) -> None:
+def _plotly_chart(
+    fig,
+    *,
+    use_container_width: bool = True,
+    responsive: bool = True,
+) -> None:
     """
     Render Plotly without Streamlit's PlotlyChart JS chunk (fails on some PaaS hosts).
 
@@ -77,12 +82,19 @@ def _plotly_chart(fig, *, use_container_width: bool = True) -> None:
     import plotly.io as pio
 
     layout_h = fig.layout.height
-    height = int(layout_h) + 40 if layout_h else 450
+    extra_h = 50
+    if fig.layout.legend and fig.layout.legend.y is not None:
+        try:
+            if float(fig.layout.legend.y) < 0:
+                extra_h = 70
+        except (TypeError, ValueError):
+            pass
+    height = int(layout_h) + extra_h if layout_h else 450
     html = pio.to_html(
         fig,
         full_html=False,
         include_plotlyjs="cdn",
-        config={"displayModeBar": True, "responsive": True},
+        config={"displayModeBar": True, "responsive": responsive},
     )
     width_style = "width:100%;" if use_container_width else ""
     st.components.v1.html(
@@ -107,27 +119,53 @@ def _section_color_map(sections: list[str] | pd.Series) -> dict[str, str]:
 
 def _apply_section_legend(fig, n_sections: int) -> None:
     """Legend layout that keeps full section codes visible (e.g. T01, not truncated to T0)."""
-    base = dict(itemclick=False, itemdoubleclick=False, font=dict(size=11))
+    base = dict(
+        itemclick=False,
+        itemdoubleclick=False,
+        title=dict(text="Section"),
+    )
     if n_sections <= 8:
         fig.update_layout(
-            legend={**base, "itemwidth": 42, "tracegroupgap": 0},
-            margin=dict(r=100),
+            legend={**base, "font": dict(size=11), "itemwidth": 42, "tracegroupgap": 0},
+            margin=dict(r=100, t=60, b=60),
+            height=480,
         )
         return
-    legend_rows = max(1, (n_sections + 9) // 10)
+    if n_sections <= 12:
+        fig.update_layout(
+            legend={
+                **base,
+                "font": dict(size=11),
+                "orientation": "h",
+                "yanchor": "top",
+                "y": -0.22,
+                "xanchor": "center",
+                "x": 0.5,
+                "itemwidth": 48,
+                "tracegroupgap": 2,
+            },
+            margin=dict(b=110, t=60, l=55, r=55),
+            height=540,
+        )
+        return
+    # Many sections: horizontal legends clip labels (e.g. T21 -> "T"). Use vertical.
+    row_px = 17
     fig.update_layout(
         legend={
             **base,
-            "orientation": "h",
+            "font": dict(size=10),
+            "orientation": "v",
             "yanchor": "top",
-            "y": -0.12 - (legend_rows - 1) * 0.06,
-            "xanchor": "center",
-            "x": 0.5,
-            "itemwidth": 44,
-            "tracegroupgap": 2,
+            "y": 1.0,
+            "xanchor": "left",
+            "x": 1.01,
+            "tracegroupgap": 1,
+            "bgcolor": "rgba(255,255,255,0.85)",
+            "bordercolor": "#ddd",
+            "borderwidth": 1,
         },
-        margin=dict(b=50 + legend_rows * 28, t=60),
-        height=480 + legend_rows * 28,
+        margin=dict(r=72, t=60, b=60, l=55),
+        height=max(520, 100 + n_sections * row_px),
     )
 
 
@@ -1593,14 +1631,16 @@ def _section_comparison(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) 
 
     )
 
-    _apply_section_legend(fig, len(sections_ordered))
+    n_sec = len(sections_ordered)
+    _apply_section_legend(fig, n_sec)
     _apply_hover_layout(fig)
 
     st.caption(
         "Sections are labeled T01-T28 (tutorial groups), not T0. "
-        "Filter sections in the sidebar. Legend entries are labels only (not clickable)."
+        "Filter sections in the sidebar to reduce legend size. "
+        "Legend entries are labels only (not clickable)."
     )
-    _plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True, responsive=n_sec <= 12)
 
 
 
