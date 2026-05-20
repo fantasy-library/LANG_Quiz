@@ -577,7 +577,7 @@ def _question_full_marks_chart(df: pd.DataFrame, questions_meta: list[dict[str, 
 
     st.caption(
         "Each bar is the percentage of students (in your current filters) whose **Canvas score on "
-        "that question equals the question maximum** ù i.e. they received every point available "
+        "that question equals the question maximum** - i.e. they received every point available "
         "for that item. Lowest bars are the hardest or most often missed. "
         "The chart on the right shows **average** points instead, which includes partial credit."
     )
