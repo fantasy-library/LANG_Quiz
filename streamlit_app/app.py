@@ -1565,43 +1565,31 @@ def _section_comparison(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) 
 
 
 
-    summary_rows = []
-
-    for section, grp in df.groupby("section"):
-
-        scores = grp["score"]
-
-        summary_rows.append(
-
-            {
-
-                "Section": section,
-
-                "N students": len(grp),
-
-                "Mean score": scores.mean(),
-
-                "Median": scores.median(),
-
-                "Pass rate %": (scores >= PASS_THRESHOLD).mean() * 100,
-
-                "Std dev": scores.std(),
-
-            }
-
+    if "score" in df.columns:
+        summary_rows = []
+        for section, grp in df.groupby("section"):
+            scores = pd.to_numeric(grp["score"], errors="coerce")
+            summary_rows.append(
+                {
+                    "Section": section,
+                    "N students": len(grp),
+                    "Mean score": scores.mean(),
+                    "Median": scores.median(),
+                    "Pass rate %": (scores >= PASS_THRESHOLD).mean() * 100,
+                    "Std dev": scores.std(),
+                }
+            )
+        st.subheader("Section summary")
+        st.dataframe(
+            pd.DataFrame(summary_rows).round(2),
+            use_container_width=True,
+            hide_index=True,
         )
-
-    st.subheader("Section summary")
-
-    st.dataframe(
-
-        pd.DataFrame(summary_rows).round(2),
-
-        use_container_width=True,
-
-        hide_index=True,
-
-    )
+    else:
+        st.caption(
+            "Section summary by overall score is unavailable for this export "
+            "(no score column and no scored questions detected)."
+        )
 
 
 

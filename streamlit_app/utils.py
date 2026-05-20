@@ -122,6 +122,52 @@ _DISCOVERY_TOP_N = 10
 _DISCOVERY_MIN_TOKEN_LEN = 5
 
 
+_SCORE_COLUMN_ALIASES: tuple[str, ...] = (
+    "score",
+    "final score",
+    "quiz score",
+    "current score",
+    "total score",
+    "percent",
+)
+
+
+def _find_overall_score_column(df: pd.DataFrame) -> str | None:
+    """Return the source column name for overall quiz score, if present."""
+    lower_to_col = {str(c).strip().lower(): c for c in df.columns}
+    for alias in _SCORE_COLUMN_ALIASES:
+        if alias in lower_to_col:
+            return lower_to_col[alias]
+    return None
+
+
+def ensure_score_column(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> pd.DataFrame:
+    """
+    Ensure a numeric ``score`` column (%).
+
+    Uses the Canvas export column when present; otherwise sums per-question points.
+    """
+    out = df.copy()
+    src = _find_overall_score_column(out)
+    if src is not None:
+        out["score"] = pd.to_numeric(out[src], errors="coerce")
+        if out["score"].notna().any():
+            return out
+    if not questions_meta:
+        return out
+    max_total = sum(float(q["max_score"]) for q in questions_meta)
+    if max_total <= 0:
+        return out
+    total = pd.Series(0.0, index=out.index, dtype=float)
+    for q in questions_meta:
+        col = q["score_col"]
+        if col not in out.columns:
+            continue
+        total = total + pd.to_numeric(out[col], errors="coerce").fillna(0)
+    out["score"] = (total / max_total) * 100.0
+    return out
+
+
 def _extract_section_from_sis(df: pd.DataFrame) -> pd.DataFrame:
     """Populate ``section`` from ``section_sis_id`` before PII scrubbing."""
     out = df.copy()
@@ -580,6 +626,7 @@ def load_and_parse(file: bytes | bytearray | BinaryIO | io.BytesIO) -> tuple[pd.
         sorted ``sections``, and ``pii_report`` from :func:`privacy.scrub_pii`.
     """
     raw = _read_canvas_csv_bytes(_coerce_csv_bytes(file))
+    raw.columns = pd.Index([str(c).strip() for c in raw.columns])
 
     # Extract section label while section_sis_id is still present
     raw = _extract_section_from_sis(raw)
@@ -591,6 +638,7 @@ def load_and_parse(file: bytes | bytearray | BinaryIO | io.BytesIO) -> tuple[pd.
         df["submitted"] = pd.to_datetime(df["submitted"], utc=True, errors="coerce")
 
     questions_meta, open_ended_meta = _scan_question_pairs(df)
+    df = ensure_score_column(df, questions_meta)
 
     sections: list[str] = []
     if "section" in df.columns:

@@ -43,7 +43,7 @@ def _column_matches_pii_name(col: str) -> bool:
     """Return True if column name matches a known PII name pattern."""
     col_lower = col.strip().lower()
     col_norm = col_lower.replace("_", " ")
-    if col_lower == "section":
+    if col_lower in {"section", "score", "attempt", "submitted", "n correct", "n incorrect"}:
         return False
     exact = {p.lower().replace("_", " ") for p in _PII_NAME_PATTERNS}
     if col_norm in exact or col_lower in {p.lower() for p in _PII_NAME_PATTERNS}:
