@@ -526,57 +526,17 @@ def analyze_open_text(
     }
 
 
-# Canvas quiz exports from Excel/Windows often use cp1252 (smart quotes, en dashes).
-# Never rely on pandas' default utf-8 or on decoding uploads as text first.
-_CSV_ENCODINGS: tuple[str, ...] = ("cp1252", "latin-1", "utf-8-sig", "utf-8")
-_CHARDET_SAMPLE_BYTES = 500_000
-_CHARDET_MIN_CONFIDENCE = 0.7
-
-# chardet labels -> names accepted by pandas read_csv
-_ENCODING_ALIASES: dict[str, str] = {
-    "ascii": "utf-8",
-    "utf8": "utf-8",
-    "utf8sig": "utf-8-sig",
-    "windows1252": "cp1252",
-    "cp1252": "cp1252",
-    "iso88591": "latin-1",
-    "latin1": "latin-1",
-    "iso88592": "latin-2",
-}
+# Canvas quiz exports are usually Windows-1252 / cp1252, but bytes like 0x9d are
+# undefined in cp1252 and break UTF-8. latin-1 accepts every byte and never fails.
 
 
-def _normalize_detected_encoding(name: str | None) -> str | None:
-    if not name:
-        return None
-    key = name.strip().lower().replace("-", "").replace("_", "")
-    return _ENCODING_ALIASES.get(key, name.strip().lower())
-
-
-def _detect_csv_encoding(data: bytes) -> str | None:
-    """Guess CSV encoding from raw bytes (chardet); None if unsure."""
+def _bytes_are_valid_utf8(data: bytes) -> bool:
+    """True only when the file is real UTF-8 (not cp1252 mis-detected)."""
     try:
-        import chardet
-    except ImportError:
-        return None
-    sample = data if len(data) <= _CHARDET_SAMPLE_BYTES else data[:_CHARDET_SAMPLE_BYTES]
-    result = chardet.detect(sample)
-    encoding = _normalize_detected_encoding(result.get("encoding"))
-    confidence = float(result.get("confidence") or 0.0)
-    if encoding and confidence >= _CHARDET_MIN_CONFIDENCE:
-        return encoding
-    return None
-
-
-def _encoding_attempt_order(data: bytes) -> list[str]:
-    """Detected encoding first, then safe fallbacks (no duplicates)."""
-    ordered: list[str] = []
-    detected = _detect_csv_encoding(data)
-    if detected:
-        ordered.append(detected)
-    for enc in _CSV_ENCODINGS:
-        if enc not in ordered:
-            ordered.append(enc)
-    return ordered
+        data.decode("utf-8")
+        return True
+    except UnicodeDecodeError:
+        return False
 
 
 def _coerce_csv_bytes(source: bytes | bytearray | BinaryIO | io.BytesIO) -> bytes:
@@ -591,18 +551,17 @@ def _coerce_csv_bytes(source: bytes | bytearray | BinaryIO | io.BytesIO) -> byte
 
 
 def _read_canvas_csv_bytes(data: bytes) -> pd.DataFrame:
-    """Parse Canvas CSV bytes: chardet auto-detect, then encoding fallbacks."""
+    """Parse Canvas CSV bytes without UTF-8/cp1252 decode failures."""
     if not data:
         raise ValueError("CSV file is empty.")
-    last_err: UnicodeDecodeError | None = None
-    for encoding in _encoding_attempt_order(data):
+    # Use UTF-8 only when the whole file is valid UTF-8 (chardet often guesses wrong).
+    if _bytes_are_valid_utf8(data):
         try:
-            return pd.read_csv(io.BytesIO(data), encoding=encoding, engine="c")
-        except UnicodeDecodeError as exc:
-            last_err = exc
-    if last_err is not None:
-        raise last_err
-    return pd.read_csv(io.BytesIO(data), encoding="latin-1", engine="c")
+            return pd.read_csv(io.BytesIO(data), encoding="utf-8-sig", engine="c")
+        except Exception:
+            pass
+    # latin-1 maps every byte 0x00-0xFF; safe for Windows Canvas / Excel exports.
+    return pd.read_csv(io.StringIO(data.decode("latin-1")), engine="c")
 
 
 def load_and_parse(file: bytes | bytearray | BinaryIO | io.BytesIO) -> tuple[pd.DataFrame, list[dict[str, Any]], list[dict[str, Any]], list[str], dict[str, Any]]:
@@ -625,7 +584,7 @@ def load_and_parse(file: bytes | bytearray | BinaryIO | io.BytesIO) -> tuple[pd.
     # Extract section label while section_sis_id is still present
     raw = _extract_section_from_sis(raw)
 
-    # PII scrub ù mandatory before any other processing
+    # PII scrub - mandatory before any other processing
     df, pii_report = scrub_pii(raw)
 
     if "submitted" in df.columns:

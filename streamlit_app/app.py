@@ -1540,7 +1540,7 @@ def _section_comparison(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) 
     _apply_hover_layout(fig)
 
     st.caption(
-        "Sections are labeled T01ùT28 (tutorial groups), not T0. "
+        "Sections are labeled T01-T28 (tutorial groups), not T0. "
         "Filter sections in the sidebar. Legend entries are labels only (not clickable)."
     )
     _plotly_chart(fig, use_container_width=True)
