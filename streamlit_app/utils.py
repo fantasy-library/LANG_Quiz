@@ -34,6 +34,13 @@ _CANVAS_ARTIFACT_RE = re.compile(
     r"Links to an external site\.|\[[^\]]+\]\([^)]+\)|https?://\S+",
     re.IGNORECASE,
 )
+# Canvas question-bank IDs sometimes prefix exported headers (e.g. "1013201: Scenario...").
+_CANVAS_QID_PREFIX_RE = re.compile(r"^\d{6,10}:\s*")
+
+
+def clean_canvas_question_text(text: str) -> str:
+    """Strip leading Canvas question ID from exported question header text."""
+    return _CANVAS_QID_PREFIX_RE.sub("", str(text).strip(), count=1)
 _EMPTY_RESPONSES = frozenset(
     {
         "",
@@ -247,12 +254,13 @@ def _append_question_pair(
     series: pd.Series,
 ) -> tuple[int, int]:
     """Add one scored or open-ended question entry; return updated counters."""
+    q_text = clean_canvas_question_text(str(question_col))
     if _is_open_ended_pair(question_col, score_col, series):
         o_num += 1
         open_ended.append(
             {
-                "label": _open_ended_short_label(str(question_col), o_num),
-                "question": str(question_col),
+                "label": _open_ended_short_label(q_text, o_num),
+                "question": q_text,
                 "question_col": question_col,
                 "score_col": score_col,
             }
@@ -263,7 +271,7 @@ def _append_question_pair(
     scored.append(
         {
             "q_label": f"Q{q_num}",
-            "question": str(question_col),
+            "question": q_text,
             "question_col": question_col,
             "score_col": score_col,
             "max_score": max_score,

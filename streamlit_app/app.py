@@ -1130,9 +1130,20 @@ def _render_open_ended_section(
 
                 color_continuous_scale="Blues",
 
+                labels={"Word": "", "Count": "Count"},
+
             )
 
-            fig.update_layout(yaxis={"categoryorder": "total ascending"})
+            fig.update_layout(
+                yaxis={
+                    "title": None,
+                    "categoryorder": "total ascending",
+                    "automargin": True,
+                },
+                xaxis={"title": {"text": "Count", "standoff": 10}, "automargin": True},
+                margin=dict(l=120, r=80, t=55, b=55),
+                coloraxis_colorbar=dict(title=None, thickness=14, len=0.55),
+            )
             _finish_simple_hover(fig, "Word: %{y}<br>Count: %{x}<extra></extra>")
 
             _plotly_chart(fig, use_container_width=True)
@@ -1203,7 +1214,7 @@ def _render_open_ended_section(
 
         max_label_len = max((len(str(t)) for t in tdf["Topic"]), default=20)
 
-        left_margin = min(420, max(100, max_label_len * 8))
+        left_margin = min(460, max(180, max_label_len * 7 + 24))
 
         fig = px.bar(
 
@@ -1223,6 +1234,8 @@ def _render_open_ended_section(
 
             custom_data=["Topic hover"],
 
+            labels={"Topic": "", "Responses": "Responses"},
+
         )
 
         fig.update_layout(
@@ -1230,6 +1243,8 @@ def _render_open_ended_section(
             height=chart_height,
 
             yaxis={
+
+                "title": None,
 
                 "categoryorder": "total ascending",
 
@@ -1239,7 +1254,25 @@ def _render_open_ended_section(
 
             },
 
-            margin=dict(l=left_margin, r=20, t=50, b=20),
+            xaxis={
+
+                "title": {"text": "Responses", "standoff": 10},
+
+                "automargin": True,
+
+            },
+
+            margin=dict(l=left_margin, r=80, t=55, b=55),
+
+            coloraxis_colorbar=dict(
+
+                title=None,
+
+                thickness=14,
+
+                len=0.55,
+
+            ),
 
         )
         _finish_wrapped_label_hover(fig, "Topic", "Responses", "%{x}")
