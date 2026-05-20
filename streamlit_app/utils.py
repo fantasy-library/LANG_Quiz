@@ -81,18 +81,82 @@ _CURATED_THEMES: tuple[dict[str, Any], ...] = (
     {"label": "Statista", "needles": ("statista",)},
     {"label": "HKEXnews", "needles": ("hkexnews", "hkex news")},
     {"label": "Passport database", "needles": ("passport",)},
-    {"label": "Citation / referencing", "needles": ("citation", "citations", "reference list", "referencing")},
-    {"label": "APA style", "needles": ("apa", "apa style")},
+    {
+        "label": "Citation / referencing",
+        "needles": (
+            "citation",
+            "citations",
+            "reference list",
+            "referencing",
+            "reference",
+            "references",
+            "bibliography",
+            "works cited",
+            "generate a reference",
+        ),
+    },
+    {"label": "APA style", "needles": ("apa", "apa style", "apa format", "apa 7")},
     {"label": "Databases", "needles": ("database", "databases")},
-    {"label": "Research skills", "needles": ("research", "researching")},
-    {"label": "Plagiarism / integrity", "needles": ("plagiarism", "academic integrity", "academic crime")},
-    {"label": "Evaluating sources", "needles": ("evaluating", "evaluation criteria", "crap", "currency", "relevancy")},
-    {"label": "Peer-reviewed sources", "needles": ("peer-reviewed", "peer reviewed", "peer review")},
+    {
+        "label": "Research skills",
+        "needles": (
+            "research skills",
+            "research skill",
+            "research effectively",
+            "research method",
+            "finding sources",
+            "find sources",
+            "search for information",
+            "filter search",
+        ),
+    },
+    {"label": "Plagiarism / integrity", "needles": ("plagiarism", "academic integrity", "academic crime", "chatgpt", "paraphras")},
+    {
+        "label": "Evaluating sources",
+        "needles": (
+            "evaluating",
+            "evaluation criteria",
+            "crap",
+            "currency",
+            "relevancy",
+            "check the source",
+            "verify the source",
+            "sources before",
+            "credible",
+            "credibility",
+            "reliable source",
+            "accurate source",
+        ),
+    },
+    {"label": "Peer-reviewed sources", "needles": ("peer-reviewed", "peer reviewed", "peer review", "scholarly source")},
     {
         "label": "Library resources",
-        "needles": ("libguide", "libguides", "library resources", "library website", "library databases"),
+        "needles": (
+            "libguide",
+            "libguides",
+            "library resources",
+            "library website",
+            "library databases",
+            "library skills",
+            "hkust library",
+            "search databases",
+        ),
     },
-    {"label": "Citing sources", "needles": ("citing", "in-text citation")},
+    {
+        "label": "Citing sources",
+        "needles": (
+            "citing",
+            "in-text citation",
+            "in-text",
+            "cite",
+            "cited",
+            "cites",
+            "how to cite",
+            "scholarly cite",
+            "scholarlycite",
+            "properly cite",
+        ),
+    },
     {"label": "Google / Google Scholar", "needles": ("google scholar", "google")},
     {"label": "Videos", "needles": ("video", "videos")},
     {"label": "Interactive exercises", "needles": ("interactive exercise", "interactive exercises", "interactive")},
@@ -414,13 +478,24 @@ def _normalized_compact(text: str) -> tuple[str, str]:
     return lower, lower.replace(" ", "")
 
 
+_CITE_FORMS_RE = re.compile(r"\bcit(?:e|es|ed|ing)\b", re.IGNORECASE)
+
+
 def response_matches_needles(text: str, needles: tuple[str, ...]) -> bool:
     """True if any alias appears in the response (handles spacing variants)."""
+    normalized = normalize_open_text(text)
     lower, compact = _normalized_compact(text)
     for needle in needles:
         n = needle.lower().strip()
         if not n:
             continue
+        if n == "cite":
+            if _CITE_FORMS_RE.search(normalized):
+                return True
+            continue
+        if " " not in n and len(n) <= 6:
+            if response_matches_word(normalized, n):
+                return True
         if n in lower or n.replace(" ", "") in compact:
             return True
     return False
@@ -564,6 +639,136 @@ def sort_theme_counts_for_display(
     return sorted(theme_counts.items(), key=sort_key)
 
 
+# Second-pass matchers for responses still in Other (prompt-filtered needles miss many short replies).
+_OTHER_REASSIGN_ORDER: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("PowerSearch", ("powersearch", "power search")),
+    ("ProQuest", ("proquest", "pro quest")),
+    ("EBSCOhost", ("ebsco", "ebscohost")),
+    ("Google / Google Scholar", ("google scholar", "google")),
+    ("APA style", ("apa", "apa style", "apa format")),
+    ("Plagiarism / integrity", ("plagiarism", "academic integrity", "chatgpt", "paraphras")),
+    (
+        "Citing sources",
+        (
+            "cite",
+            "citing",
+            "in-text citation",
+            "how to cite",
+            "scholarlycite",
+            "scholarly cite",
+            "properly cite",
+        ),
+    ),
+    (
+        "Citation / referencing",
+        (
+            "citation",
+            "citations",
+            "reference list",
+            "referencing",
+            "reference",
+            "references",
+            "bibliography",
+            "works cited",
+            "generate a reference",
+        ),
+    ),
+    (
+        "Evaluating sources",
+        (
+            "check the source",
+            "verify the source",
+            "sources before",
+            "credible",
+            "credibility",
+            "reliable source",
+            "accurate source",
+            "evaluation criteria",
+            "currency",
+            "relevancy",
+        ),
+    ),
+    ("Peer-reviewed sources", ("peer-reviewed", "peer reviewed", "scholarly source")),
+    (
+        "Library resources",
+        (
+            "libguide",
+            "library databases",
+            "library website",
+            "library skills",
+            "hkust library",
+            "search databases",
+            "search widely",
+            "search smart",
+            "using the library",
+        ),
+    ),
+    (
+        "Research skills",
+        (
+            "research effectively",
+            "research skills",
+            "finding sources",
+            "find sources",
+            "search for information",
+            "filter search",
+            "research method",
+            "search efficiently",
+            "search effectively",
+            "search engine",
+            "conduct research",
+            "during research",
+        ),
+    ),
+    ("Databases", ("database", "databases", "data site", "data sites")),
+    ("Statista", ("statista",)),
+    ("Factiva", ("factiva",)),
+    ("Passport database", ("passport",)),
+    ("HKEXnews", ("hkexnews",)),
+    ("Videos", ("video", "videos")),
+    ("Interactive exercises", ("interactive exercise", "interactive")),
+)
+
+
+def _match_secondary_theme(text: str) -> str | None:
+    """Pick the first matching curated topic for a formerly uncategorized response."""
+    for label, needles in _OTHER_REASSIGN_ORDER:
+        if response_matches_needles(text, needles):
+            return label
+    return None
+
+
+def _reassign_other_responses(
+    grouped: dict[str, pd.DataFrame],
+    theme_kind: dict[str, str],
+) -> tuple[dict[str, pd.DataFrame], dict[str, str]]:
+    """Move Other responses into curated topics when secondary needles match."""
+    other_key = "Other / uncategorized"
+    if other_key not in grouped:
+        return grouped, theme_kind
+    other_df = grouped.pop(other_key)
+    if other_df.empty:
+        return grouped, theme_kind
+
+    remaining_rows: list[pd.Series] = []
+    for _, row in other_df.iterrows():
+        label = _match_secondary_theme(str(row["Response"]))
+        if label is None:
+            remaining_rows.append(row)
+            continue
+        piece = row.to_frame().T
+        if label in grouped:
+            grouped[label] = pd.concat([grouped[label], piece], ignore_index=True)
+        else:
+            grouped[label] = piece
+        theme_kind[label] = theme_kind.get(label, "curated")
+
+    if remaining_rows:
+        grouped[other_key] = pd.DataFrame(remaining_rows).reset_index(drop=True)
+        theme_kind[other_key] = "other"
+    return grouped, theme_kind
+
+
 def group_responses_by_theme(
     responses_df: pd.DataFrame,
     prompt_text: str | None = None,
@@ -607,6 +812,7 @@ def group_responses_by_theme(
     if not other.empty:
         grouped["Other / uncategorized"] = other
         theme_kind["Other / uncategorized"] = "other"
+    grouped, theme_kind = _reassign_other_responses(grouped, theme_kind)
     return grouped, theme_kind
 
 

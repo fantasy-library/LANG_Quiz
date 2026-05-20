@@ -1311,22 +1311,15 @@ def _render_open_ended_section(
 
     if not responses_df.empty:
 
-        grouped, theme_kind = group_responses_by_theme(
+        grouped, _theme_kind = group_responses_by_theme(
             responses_df,
             prompt_text=meta["question"],
         )
 
-
-
-        def _theme_sort_key(label: str) -> tuple[int, int, str]:
-
-            kind_rank = {"curated": 0, "discovered": 1, "other": 2}.get(theme_kind.get(label), 1)
-
-            return (kind_rank, -len(grouped[label]), label)
-
-
-
-        theme_order = sorted(grouped.keys(), key=_theme_sort_key)
+        theme_order = sorted(
+            grouped.keys(),
+            key=lambda label: (-len(grouped[label]), label.lower()),
+        )
 
 
 
@@ -1335,6 +1328,7 @@ def _render_open_ended_section(
         st.caption(
             "Themes are topics students mention (e.g. APA, ProQuest), not the quiz question "
             "titles. Phrasing copied from the prompt (e.g. \"Library Module\") is excluded. "
+            "Listed from most to fewest responses. "
             "Click once on a table row to open the full response below (double-click is not needed)."
         )
 
