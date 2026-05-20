@@ -90,13 +90,15 @@ def _plotly_chart(
         except (TypeError, ValueError):
             pass
     height = int(layout_h) + extra_h if layout_h else 450
+    if use_container_width and not fig.layout.width:
+        fig.update_layout(autosize=True)
     html = pio.to_html(
         fig,
         full_html=False,
         include_plotlyjs="cdn",
         config={"displayModeBar": True, "responsive": responsive},
     )
-    width_style = "width:100%;" if use_container_width else ""
+    width_style = "width:100%;max-width:100%;" if use_container_width else ""
     st.components.v1.html(
         f'<div style="{width_style}">{html}</div>',
         height=height,
@@ -117,8 +119,13 @@ def _section_color_map(sections: list[str] | pd.Series) -> dict[str, str]:
     return dict(zip(ordered, colors))
 
 
-def _apply_section_legend(fig, n_sections: int) -> None:
-    """Legend layout that keeps full section codes visible (e.g. T01, not truncated to T0)."""
+def _apply_section_legend(fig, n_sections: int) -> bool:
+    """
+    Configure section legend on the chart.
+
+    Returns True when the Plotly legend is hidden and a full-width Streamlit
+    color key should be shown below the chart (many sections).
+    """
     base = dict(
         itemclick=False,
         itemdoubleclick=False,
@@ -127,10 +134,11 @@ def _apply_section_legend(fig, n_sections: int) -> None:
     if n_sections <= 8:
         fig.update_layout(
             legend={**base, "font": dict(size=11), "itemwidth": 42, "tracegroupgap": 0},
-            margin=dict(r=100, t=60, b=60),
+            margin=dict(r=40, t=60, b=60, l=55),
             height=480,
+            autosize=True,
         )
-        return
+        return False
     if n_sections <= 12:
         fig.update_layout(
             legend={
@@ -144,29 +152,42 @@ def _apply_section_legend(fig, n_sections: int) -> None:
                 "itemwidth": 48,
                 "tracegroupgap": 2,
             },
-            margin=dict(b=110, t=60, l=55, r=55),
+            margin=dict(b=110, t=60, l=55, r=40),
             height=540,
+            autosize=True,
         )
-        return
-    # Many sections: horizontal legends clip labels (e.g. T21 -> "T"). Use vertical.
-    row_px = 17
+        return False
+    # Many sections: in-chart legend is narrow and wastes horizontal space.
     fig.update_layout(
-        legend={
-            **base,
-            "font": dict(size=10),
-            "orientation": "v",
-            "yanchor": "top",
-            "y": 1.0,
-            "xanchor": "left",
-            "x": 1.01,
-            "tracegroupgap": 1,
-            "bgcolor": "rgba(255,255,255,0.85)",
-            "bordercolor": "#ddd",
-            "borderwidth": 1,
-        },
-        margin=dict(r=72, t=60, b=60, l=55),
-        height=max(520, 100 + n_sections * row_px),
+        showlegend=False,
+        margin=dict(r=30, t=60, b=60, l=55),
+        height=520,
+        autosize=True,
     )
+    return True
+
+
+def _render_section_color_key(
+    sections: list[str],
+    color_map: dict[str, str],
+) -> None:
+    """Full-width section color key below the comparison chart."""
+    n = len(sections)
+    if n == 0:
+        return
+    n_cols = 7 if n > 14 else (5 if n > 8 else 4)
+    st.markdown("**Section colors** (matches bar colors above)")
+    cols = st.columns(n_cols)
+    for i, sec in enumerate(sections):
+        color = color_map.get(sec, "#4A6FA5")
+        with cols[i % n_cols]:
+            st.markdown(
+                f'<span style="display:inline-block;width:11px;height:11px;'
+                f"background:{color};margin-right:5px;vertical-align:middle;"
+                f'border-radius:2px;"></span>'
+                f'<span style="font-size:0.88rem;">{sec}</span>',
+                unsafe_allow_html=True,
+            )
 
 
 
@@ -1631,6 +1652,7 @@ def _section_comparison(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) 
     long_df["Mean %"] = (long_df["Mean score"] / long_df["Max"]) * 100
 
     sections_ordered = sorted(long_df["Section"].astype(str).unique())
+    section_colors = _section_color_map(sections_ordered)
 
     fig = px.bar(
 
@@ -1650,7 +1672,7 @@ def _section_comparison(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) 
 
         title="Mean score per question by section",
 
-        color_discrete_map=_section_color_map(sections_ordered),
+        color_discrete_map=section_colors,
 
         category_orders={"Section": sections_ordered},
 
@@ -1675,15 +1697,21 @@ def _section_comparison(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) 
     )
 
     n_sec = len(sections_ordered)
-    _apply_section_legend(fig, n_sec)
+    external_legend = _apply_section_legend(fig, n_sec)
     _apply_hover_layout(fig)
 
     st.caption(
         "Sections are labeled T01-T28 (tutorial groups), not T0. "
-        "Filter sections in the sidebar to reduce legend size. "
-        "Legend entries are labels only (not clickable)."
+        "Use the sidebar to filter sections. "
+        + (
+            "Colors for all sections are listed below the chart."
+            if external_legend
+            else "Legend entries are labels only (not clickable)."
+        )
     )
-    _plotly_chart(fig, use_container_width=True, responsive=n_sec <= 12)
+    _plotly_chart(fig, use_container_width=True, responsive=True)
+    if external_legend:
+        _render_section_color_key(sections_ordered, section_colors)
 
 
 
