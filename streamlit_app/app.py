@@ -1024,7 +1024,7 @@ def _show_full_response(
     """Prominent scrollable panel for a student's complete open-ended answer."""
     del area_key  # layout key not needed for markdown block
     if nested:
-        st.markdown(f"**Full response ù {student_id}**")
+        st.markdown(f"**Full response - {student_id}**")
         _render_readable_response(text)
         return
     with st.expander(f"Full response - {student_id}", expanded=True):
