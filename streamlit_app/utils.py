@@ -13,7 +13,19 @@ import pandas as pd
 
 from privacy import scrub_pii
 
-_SCORE_COL_RE = re.compile(r"^Column(\d+)$", re.IGNORECASE)
+_SCORE_COL_RE = re.compile(r"^column\s*(\d+)(?:\.\d+)?$", re.IGNORECASE)
+_METADATA_COLUMNS = frozenset(
+    {
+        "section",
+        "submitted",
+        "attempt",
+        "score",
+        "n correct",
+        "n incorrect",
+        "anonymous id",
+    }
+)
+_OPEN_ENDED_HINTS = ("most useful", "learnt", "learned", "comment", "suggestion", "short repl")
 _MCQ_OPTION_SPLIT_RE = re.compile(r",\s*(?=[A-Z]\.)")
 _MCQ_LETTER_RE = re.compile(r"^([A-Z])\.")
 _PASS_THRESHOLD = 60.0
@@ -184,6 +196,100 @@ def _extract_section_from_sis(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _normalize_column_name(name: object) -> str:
+    """Strip whitespace and UTF-8 BOM from a CSV header."""
+    return str(name).strip().lstrip("\ufeff")
+
+
+def _is_metadata_column(name: object) -> bool:
+    low = _normalize_column_name(name).lower()
+    if low in _METADATA_COLUMNS:
+        return True
+    return low.startswith("section_") or low.startswith("unnamed")
+
+
+def _is_score_column_name(name: object) -> bool:
+    return bool(_SCORE_COL_RE.match(_normalize_column_name(name)))
+
+
+def _looks_like_numeric_score_column(series: pd.Series) -> bool:
+    """True when a column mostly holds numeric quiz points (0-100)."""
+    numeric = pd.to_numeric(series, errors="coerce")
+    if numeric.notna().sum() < max(1, len(series) // 10):
+        return False
+    vals = numeric.dropna()
+    if vals.empty:
+        return True
+    return float(vals.max()) <= 100.0
+
+
+def _is_open_ended_pair(question_col: object, score_col: str, series: pd.Series) -> bool:
+    """Classify ungraded / reflection prompts (max score 0)."""
+    numeric = pd.to_numeric(series, errors="coerce")
+    if numeric.notna().any() and float(numeric.max()) > 0.0:
+        return False
+    q_low = _normalize_column_name(question_col).lower()
+    if any(hint in q_low for hint in _OPEN_ENDED_HINTS):
+        return True
+    if not numeric.notna().any():
+        return True
+    return float(numeric.max()) <= 0.0
+
+
+def _append_question_pair(
+    *,
+    scored: list[dict[str, Any]],
+    open_ended: list[dict[str, Any]],
+    q_num: int,
+    o_num: int,
+    question_col: object,
+    score_col: str,
+    series: pd.Series,
+) -> tuple[int, int]:
+    """Add one scored or open-ended question entry; return updated counters."""
+    if _is_open_ended_pair(question_col, score_col, series):
+        o_num += 1
+        open_ended.append(
+            {
+                "label": _open_ended_short_label(str(question_col), o_num),
+                "question": str(question_col),
+                "question_col": question_col,
+                "score_col": score_col,
+            }
+        )
+        return q_num, o_num
+    q_num += 1
+    max_score = float(pd.to_numeric(series, errors="coerce").max())
+    scored.append(
+        {
+            "q_label": f"Q{q_num}",
+            "question": str(question_col),
+            "question_col": question_col,
+            "score_col": score_col,
+            "max_score": max_score,
+        }
+    )
+    return q_num, o_num
+
+
+def diagnose_quiz_columns(df: pd.DataFrame) -> str:
+    """Human-readable hint when question pairing fails."""
+    cols = [_normalize_column_name(c) for c in df.columns]
+    score_like = [c for c in cols if _is_score_column_name(c)]
+    lines = [
+        f"Found {len(cols)} columns, {len(score_like)} score-like headers "
+        f"(e.g. Column10, Column12).",
+    ]
+    if not score_like:
+        samples = ", ".join(repr(c[:40]) for c in cols[:8])
+        lines.append(
+            "No ColumnNN headers detected. Use Canvas: Quiz Statistics -> "
+            "Student Analysis -> Download CSV (not Item Analysis or Gradebook export)."
+        )
+        lines.append(f"First columns: {samples}")
+    return " ".join(lines)
+
+
 def _open_ended_short_label(question_text: str, index: int) -> str:
     """Derive a short UI label from the open-ended prompt text."""
     q = question_text.lower()
@@ -198,44 +304,61 @@ def _scan_question_pairs(df: pd.DataFrame) -> tuple[list[dict[str, Any]], list[d
     """
     Pair question columns with score columns; split scored vs open-ended.
 
-    Open-ended items have a score column whose maximum is 0 (ungraded).
+    Expects Canvas Student Analysis CSV: question text header, then ColumnNN points.
+    Falls back to numeric columns that follow long text headers when ColumnNN is missing.
     """
     cols = list(df.columns)
     scored: list[dict[str, Any]] = []
     open_ended: list[dict[str, Any]] = []
     q_num = 0
     o_num = 0
+    paired_score_cols: set[object] = set()
 
     for i, col in enumerate(cols):
-        if not _SCORE_COL_RE.match(str(col)):
+        if not _is_score_column_name(col):
             continue
         if i == 0:
             continue
         question_col = cols[i - 1]
+        if _is_metadata_column(question_col):
+            continue
         score_col = col
-        series = pd.to_numeric(df[score_col], errors="coerce")
-        max_score = float(series.max()) if series.notna().any() else 0.0
-        if max_score <= 0:
-            o_num += 1
-            open_ended.append(
-                {
-                    "label": _open_ended_short_label(str(question_col), o_num),
-                    "question": str(question_col),
-                    "question_col": question_col,
-                    "score_col": score_col,
-                }
-            )
-        else:
-            q_num += 1
-            scored.append(
-                {
-                    "q_label": f"Q{q_num}",
-                    "question": str(question_col),
-                    "question_col": question_col,
-                    "score_col": score_col,
-                    "max_score": max_score,
-                }
-            )
+        paired_score_cols.add(score_col)
+        series = df[score_col]
+        q_num, o_num = _append_question_pair(
+            scored=scored,
+            open_ended=open_ended,
+            q_num=q_num,
+            o_num=o_num,
+            question_col=question_col,
+            score_col=score_col,
+            series=series,
+        )
+
+    for i in range(len(cols) - 1):
+        question_col = cols[i]
+        score_col = cols[i + 1]
+        if score_col in paired_score_cols:
+            continue
+        if _is_metadata_column(question_col) or _is_metadata_column(score_col):
+            continue
+        if _is_score_column_name(score_col):
+            continue
+        if len(_normalize_column_name(question_col)) < 12:
+            continue
+        if not _looks_like_numeric_score_column(df[score_col]):
+            continue
+        paired_score_cols.add(score_col)
+        q_num, o_num = _append_question_pair(
+            scored=scored,
+            open_ended=open_ended,
+            q_num=q_num,
+            o_num=o_num,
+            question_col=question_col,
+            score_col=score_col,
+            series=df[score_col],
+        )
+
     return scored, open_ended
 
 
@@ -626,7 +749,7 @@ def load_and_parse(file: bytes | bytearray | BinaryIO | io.BytesIO) -> tuple[pd.
         sorted ``sections``, and ``pii_report`` from :func:`privacy.scrub_pii`.
     """
     raw = _read_canvas_csv_bytes(_coerce_csv_bytes(file))
-    raw.columns = pd.Index([str(c).strip() for c in raw.columns])
+    raw.columns = pd.Index([_normalize_column_name(c) for c in raw.columns])
 
     # Extract section label while section_sis_id is still present
     raw = _extract_section_from_sis(raw)

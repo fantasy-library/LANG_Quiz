@@ -39,6 +39,8 @@ from utils import (
 
     detect_correct_answers,
 
+    diagnose_quiz_columns,
+
     export_scrubbed_csv,
 
     looks_like_mcq_multiselect,
@@ -590,6 +592,10 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
 
     if not questions_meta:
 
+        st.info(
+            "No scored questions detected in this CSV. "
+            + diagnose_quiz_columns(df)
+        )
         return
 
     labels = [f"{q['q_label']}: {truncate_label(q['question'])}" for q in questions_meta]
@@ -1044,7 +1050,11 @@ def _render_open_ended_section(
 
     if not open_ended_meta:
 
-        st.info("No open-ended columns detected in this CSV.")
+        st.info(
+            "No open-ended columns detected in this CSV "
+            "(ungraded reflection/feedback prompts with ColumnNN score 0). "
+            + diagnose_quiz_columns(df)
+        )
 
         return
 
