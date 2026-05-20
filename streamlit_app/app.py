@@ -537,16 +537,22 @@ def _question_full_marks_chart(df: pd.DataFrame, questions_meta: list[dict[str, 
 
         pct = (scores >= q["max_score"] - 1e-6).mean() * 100
 
-        rows.append({"Question": q["q_label"], "Full marks %": pct, "question_text": q["question"]})
+        rows.append(
+            {
+                "Question": q["q_label"],
+                "At max points %": pct,
+                "question_text": q["question"],
+            }
+        )
 
-    qdf = pd.DataFrame(rows).sort_values("Full marks %", ascending=True)
+    qdf = pd.DataFrame(rows).sort_values("At max points %", ascending=True)
     qdf["Question hover"] = _question_hover_series(qdf["question_text"])
 
     fig = px.bar(
 
         qdf,
 
-        x="Full marks %",
+        x="At max points %",
 
         y="Question",
 
@@ -554,20 +560,27 @@ def _question_full_marks_chart(df: pd.DataFrame, questions_meta: list[dict[str, 
 
         custom_data=["Question hover"],
 
-        labels={"Full marks %": "% with full marks"},
+        labels={"At max points %": "% at maximum points"},
 
-        title="% of students with full marks (hardest at bottom)",
+        title="Students who earned all points on the question",
 
-        color="Full marks %",
+        color="At max points %",
 
         color_continuous_scale="Blues",
 
     )
 
     fig.update_layout(yaxis={"categoryorder": "total ascending"})
-    _finish_question_bar_hover(fig, "Full marks (%)")
+    _finish_question_bar_hover(fig, "At max points (%)")
 
     _plotly_chart(fig, use_container_width=True)
+
+    st.caption(
+        "Each bar is the percentage of students (in your current filters) whose **Canvas score on "
+        "that question equals the question maximum**  i.e. they received every point available "
+        "for that item. Lowest bars are the hardest or most often missed. "
+        "The chart on the right shows **average** points instead, which includes partial credit."
+    )
 
 
 
@@ -618,7 +631,7 @@ def _question_avg_score_chart(df: pd.DataFrame, questions_meta: list[dict[str, A
 
         labels={"Avg ratio": "Average score / max (%)"},
 
-        title="Average score earned vs max (partial credit visible)",
+        title="Average points earned on the question (% of max)",
 
         color="Avg ratio",
 
@@ -630,6 +643,11 @@ def _question_avg_score_chart(df: pd.DataFrame, questions_meta: list[dict[str, A
     _finish_question_bar_hover(fig, "Avg (% of max)")
 
     _plotly_chart(fig, use_container_width=True)
+
+    st.caption(
+        "Mean question score divided by that question's maximum points. Students with zero or "
+        "partial credit lower this bar even when some classmates earned all points (left chart)."
+    )
 
 
 
@@ -694,21 +712,28 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
         legend_cols = ["Choice", "Count", "Correct", "Full answer text"]
         counts = counts.rename(columns={"Answer": "Full answer text"})
 
+    counts["answer_key"] = counts["is_correct"].map(
+        {True: "Correct", False: "Incorrect"}
+    )
     fig = px.bar(
         counts,
         x="Count",
         y="Choice",
         orientation="h",
-        color="is_correct",
-        color_discrete_map={True: COLOR_PASS, False: "#1976D2"},
-        labels={"is_correct": "Correct answer", "Choice": "Answer choice"},
+        color="answer_key",
+        color_discrete_map={"Correct": COLOR_PASS, "Incorrect": "#1976D2"},
+        labels={"answer_key": "Answer key", "Choice": "Answer choice"},
         title=chart_title,
         custom_data=["Answer hover"],
     )
     chart_height = max(320, len(counts) * 36)
     fig.update_layout(
         height=chart_height,
-        yaxis={"categoryorder": "total ascending", "title": ""},
+        yaxis={
+            "categoryorder": "total ascending",
+            "title": "",
+            "automargin": True,
+        },
         showlegend=True,
     )
     fig.update_traces(
@@ -719,8 +744,9 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
             "<extra></extra>"
         )
     )
+    _apply_answer_key_legend(fig)
     _apply_hover_layout(fig)
-    _plotly_chart(fig, use_container_width=True)
+    _plotly_chart(fig, use_container_width=True, responsive=False)
 
     legend = counts.copy()
     legend["Correct"] = legend["is_correct"].map({True: "Yes", False: "No"})
@@ -947,6 +973,23 @@ def _wrap_for_hover(text: str, width: int = 52) -> str:
         lines.append(" ".join(current))
 
     return "<br>".join(lines)
+
+
+def _apply_answer_key_legend(fig) -> None:
+    """Legend for correct vs incorrect options (Question analysis bar charts)."""
+    fig.update_layout(
+        legend=dict(
+            title=dict(text="Answer key"),
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.02,
+            font=dict(size=11),
+            tracegroupgap=4,
+        ),
+        margin=dict(r=120, l=72, t=55, b=50),
+    )
 
 
 def _apply_hover_layout(fig) -> None:
