@@ -791,6 +791,7 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
 
     legend = counts.copy()
     legend["Correct"] = legend["is_correct"].map({True: "Yes", False: "No"})
+    legend = legend.sort_values("Count", ascending=False).reset_index(drop=True)
     st.dataframe(
         legend[legend_cols],
         use_container_width=True,
@@ -800,6 +801,7 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
     if looks_like_mcq_multiselect(answer_col):
         combo = answer_col.value_counts().reset_index()
         combo.columns = ["Response combination", "Count"]
+        combo = combo.sort_values("Count", ascending=False).reset_index(drop=True)
         with st.expander("All response combinations (advanced)"):
             st.caption(
                 "Each row is exactly what one or more students submitted "
