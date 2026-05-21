@@ -962,16 +962,42 @@ def _response_preview(text: str, max_len: int = 80) -> str:
     return one_line[: max_len - 3] + "..."
 
 
-def _theme_roster_df(theme_df: pd.DataFrame, preview_len: int = 120) -> pd.DataFrame:
-    """Table of every student in a theme with a short response preview."""
-    rows = [
+def _tooltip_response_text(text: str, max_len: int = 4000) -> str:
+    """Full response for hover tooltips (keep line breaks for readability)."""
+    cleaned = str(text).strip()
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max_len - 3] + "..."
+
+
+def _theme_roster_df(
+    theme_df: pd.DataFrame,
+    preview_len: int = 120,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Roster table plus matching tooltip text for each cell.
+
+    Use ``display.style.set_tooltips(tips)`` so hovering Response preview shows
+    the full answer.
+    """
+    rows: list[dict[str, str]] = []
+    for _, row in theme_df.iterrows():
+        full = str(row["Response"])
+        rows.append(
+            {
+                "Student": str(row["Anonymous ID"]),
+                "Response preview": _response_preview(full, max_len=preview_len),
+                "_tooltip": _tooltip_response_text(full),
+            }
+        )
+    roster = pd.DataFrame(rows).sort_values("Student").reset_index(drop=True)
+    tooltips = pd.DataFrame(
         {
-            "Student": str(row["Anonymous ID"]),
-            "Response preview": _response_preview(str(row["Response"]), max_len=preview_len),
+            "Student": [""] * len(roster),
+            "Response preview": roster["_tooltip"].tolist(),
         }
-        for _, row in theme_df.iterrows()
-    ]
-    return pd.DataFrame(rows).sort_values("Student").reset_index(drop=True)
+    )
+    return roster.drop(columns=["_tooltip"]), tooltips
 
 
 
@@ -1469,6 +1495,7 @@ def _render_open_ended_section(
             "Curated library topics only (e.g. APA, ProQuest, Copyright). Generic words from "
             "reflection phrasing (e.g. taught, careful, various) are not listed as themes. "
             "Listed from most to fewest responses. "
+            "Hover a Response preview cell for the full answer. "
             "Click once on a table row to open the full response below (double-click is not needed)."
         )
 
@@ -1494,7 +1521,7 @@ def _render_open_ended_section(
 
                     st.caption(theme_label)
 
-                roster = _theme_roster_df(theme_df)
+                roster, roster_tooltips = _theme_roster_df(theme_df)
                 response_by_student = {
                     str(r["Anonymous ID"]): str(r["Response"])
                     for _, r in theme_df.iterrows()
@@ -1506,7 +1533,7 @@ def _render_open_ended_section(
                 pick_key = f"open_theme_pick_{choice}_{theme_slug}"
 
                 table_event = st.dataframe(
-                    roster,
+                    roster.style.set_tooltips(roster_tooltips),
                     use_container_width=True,
                     hide_index=True,
                     on_select="rerun",
