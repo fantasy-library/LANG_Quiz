@@ -98,9 +98,19 @@ def _plotly_chart(
         include_plotlyjs="cdn",
         config={"displayModeBar": True, "responsive": responsive},
     )
-    width_style = "width:100%;max-width:100%;" if use_container_width else ""
+    if use_container_width:
+        wrapped = (
+            '<div class="plotly-fullwidth" style="width:100%;max-width:100%;">'
+            "<style>"
+            ".plotly-fullwidth .plotly-graph-div,.plotly-fullwidth .js-plotly-plot"
+            "{width:100%!important;max-width:100%;}"
+            "</style>"
+            f"{html}</div>"
+        )
+    else:
+        wrapped = html
     st.components.v1.html(
-        f'<div style="{width_style}">{html}</div>',
+        wrapped,
         height=height,
         scrolling=False,
     )
@@ -591,7 +601,11 @@ def _question_full_marks_chart(df: pd.DataFrame, questions_meta: list[dict[str, 
 
     )
 
-    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    fig.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        autosize=True,
+        margin=dict(r=40, l=55, t=55, b=50),
+    )
     _finish_question_bar_hover(fig, "At max points (%)")
 
     _plotly_chart(fig, use_container_width=True)
@@ -660,7 +674,11 @@ def _question_avg_score_chart(df: pd.DataFrame, questions_meta: list[dict[str, A
 
     )
 
-    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    fig.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        autosize=True,
+        margin=dict(r=40, l=55, t=55, b=50),
+    )
     _finish_question_bar_hover(fig, "Avg (% of max)")
 
     _plotly_chart(fig, use_container_width=True)
@@ -755,7 +773,9 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
             "title": "",
             "automargin": True,
         },
-        showlegend=True,
+        showlegend=False,
+        autosize=True,
+        margin=dict(r=30, l=72, t=55, b=50),
     )
     fig.update_traces(
         hovertemplate=(
@@ -765,9 +785,9 @@ def _question_detail(df: pd.DataFrame, questions_meta: list[dict[str, Any]]) -> 
             "<extra></extra>"
         )
     )
-    _apply_answer_key_legend(fig)
     _apply_hover_layout(fig)
-    _plotly_chart(fig, use_container_width=True, responsive=False)
+    _plotly_chart(fig, use_container_width=True)
+    _render_answer_key_legend()
 
     legend = counts.copy()
     legend["Correct"] = legend["is_correct"].map({True: "Yes", False: "No"})
@@ -996,20 +1016,17 @@ def _wrap_for_hover(text: str, width: int = 52) -> str:
     return "<br>".join(lines)
 
 
-def _apply_answer_key_legend(fig) -> None:
-    """Legend for correct vs incorrect options (Question analysis bar charts)."""
-    fig.update_layout(
-        legend=dict(
-            title=dict(text="Answer key"),
-            orientation="v",
-            yanchor="middle",
-            y=0.5,
-            xanchor="left",
-            x=1.02,
-            font=dict(size=11),
-            tracegroupgap=4,
-        ),
-        margin=dict(r=120, l=72, t=55, b=50),
+def _render_answer_key_legend() -> None:
+    """Full-width color key for correct vs incorrect bars (Question analysis)."""
+    st.markdown(
+        f'<span style="display:inline-block;width:12px;height:12px;background:{COLOR_PASS};'
+        f'margin-right:6px;vertical-align:middle;border-radius:2px;"></span>'
+        "**Correct** option"
+        "&nbsp;&nbsp;&nbsp;"
+        f'<span style="display:inline-block;width:12px;height:12px;background:#1976D2;'
+        f'margin-right:6px;vertical-align:middle;border-radius:2px;"></span>'
+        "**Incorrect** option",
+        unsafe_allow_html=True,
     )
 
 
