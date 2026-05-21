@@ -974,12 +974,7 @@ def _theme_roster_df(
     theme_df: pd.DataFrame,
     preview_len: int = 120,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Roster table plus matching tooltip text for each cell.
-
-    Use ``display.style.set_tooltips(tips)`` so hovering Response preview shows
-    the full answer.
-    """
+    """Roster table plus full response text for hover tooltips."""
     rows: list[dict[str, str]] = []
     for _, row in theme_df.iterrows():
         full = str(row["Response"])
@@ -998,6 +993,58 @@ def _theme_roster_df(
         }
     )
     return roster.drop(columns=["_tooltip"]), tooltips
+
+
+def _render_theme_roster_table(roster: pd.DataFrame, tooltips: pd.DataFrame) -> None:
+    """
+    HTML table with CSS hover popovers for full response text.
+
+    Pandas/Streamlit dataframe tooltips are unreliable on Streamlit Cloud, so we
+    render a small HTML component instead.
+    """
+    row_parts: list[str] = []
+    for i in range(len(roster)):
+        student = html.escape(str(roster.iloc[i]["Student"]))
+        preview = html.escape(str(roster.iloc[i]["Response preview"]))
+        full = html.escape(str(tooltips.iloc[i]["Response preview"]), quote=True)
+        row_parts.append(
+            "<tr>"
+            f"<td class='student-id'>{student}</td>"
+            "<td><div class='preview-wrap'>"
+            f"<span class='preview-text'>{preview}</span>"
+            f"<div class='preview-tip'>{full}</div>"
+            "</div></td>"
+            "</tr>"
+        )
+    n = len(roster)
+    height = min(560, max(100, 48 + n * 30))
+    doc = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+body {{ margin: 0; font-family: "Source Sans Pro", sans-serif; font-size: 14px; color: #31333f; }}
+table {{ width: 100%; border-collapse: collapse; table-layout: fixed; }}
+th, td {{ padding: 8px 10px; text-align: left; border-bottom: 1px solid #e6e6e6; vertical-align: top; }}
+th {{ background: #f8f9fa; font-weight: 600; }}
+th:first-child, td.student-id {{ width: 118px; white-space: nowrap; }}
+.preview-wrap {{ position: relative; display: block; }}
+.preview-text {{
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}}
+.preview-wrap:hover .preview-tip {{ display: block; }}
+.preview-tip {{
+  display: none; position: absolute; left: 0; top: calc(100% + 4px); z-index: 1000;
+  min-width: 280px; max-width: min(560px, 92vw); max-height: 280px; overflow: auto;
+  white-space: pre-wrap; word-wrap: break-word; background: #fff;
+  border: 1px solid #c8c8c8; border-radius: 6px; padding: 10px 12px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12); font-size: 13px; line-height: 1.45;
+}}
+tr:hover {{ background: #f5f8fc; }}
+</style></head><body>
+<table>
+<thead><tr><th>Student</th><th>Response preview (hover for full text)</th></tr></thead>
+<tbody>{"".join(row_parts)}</tbody>
+</table></body></html>"""
+    st.components.v1.html(doc, height=height, scrolling=n > 14)
 
 
 
@@ -1495,8 +1542,8 @@ def _render_open_ended_section(
             "Curated library topics only (e.g. APA, ProQuest, Copyright). Generic words from "
             "reflection phrasing (e.g. taught, careful, various) are not listed as themes. "
             "Listed from most to fewest responses. "
-            "Hover a Response preview cell for the full answer. "
-            "Click once on a table row to open the full response below (double-click is not needed)."
+            "Hover a Response preview cell for the full answer, then choose a student "
+            "in the dropdown below to open the full response."
         )
 
         for theme_label in theme_order:
@@ -1529,27 +1576,24 @@ def _render_open_ended_section(
 
                 st.markdown(f"**{len(roster)} students** in this theme")
 
-                table_key = f"open_theme_table_{choice}_{theme_slug}"
                 pick_key = f"open_theme_pick_{choice}_{theme_slug}"
 
-                table_event = st.dataframe(
-                    roster.style.set_tooltips(roster_tooltips),
-                    use_container_width=True,
-                    hide_index=True,
-                    on_select="rerun",
-                    selection_mode="single-row",
-                    key=table_key,
-                )
+                _render_theme_roster_table(roster, roster_tooltips)
 
-                if table_event.selection.rows:
-                    st.session_state[pick_key] = str(
-                        roster.iloc[table_event.selection.rows[0]]["Student"]
-                    )
+                student_list = roster["Student"].astype(str).tolist()
+                pick_default = 0
+                if pick_key in st.session_state:
+                    prior = str(st.session_state[pick_key])
+                    if prior in student_list:
+                        pick_default = student_list.index(prior)
 
                 selected_id = st.selectbox(
-                    "Student",
-                    theme_ids,
-                    format_func=lambda aid: str(aid),
+                    "Student (open full response below)",
+                    student_list,
+                    index=pick_default,
+                    format_func=lambda sid: (
+                        f"{sid} - {_response_preview(response_by_student.get(sid, ''), 70)}"
+                    ),
                     key=pick_key,
                 )
                 selected_id = str(selected_id)
@@ -1569,7 +1613,7 @@ def _render_open_ended_section(
                         _focus_student_from_open_ended(selected_id, focus_key)
                         st.success(f"{selected_id} is now selected in **Student Detail**.")
                 else:
-                    st.info("Click a row in the table above to read the full response.")
+                    st.info("Choose a student in the dropdown to read the full response.")
 
 
 
